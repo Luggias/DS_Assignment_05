@@ -42,19 +42,31 @@ Ans: When the leader and two additional servers were stopped, only two nodes rem
 
 1. Which server is the leader? Can there be multiple leaders? Justify your answer using the statuses from the different servers.
 Ans: 
+There is exactly one leader at any time. 
+This can be seen in the /admin/status output of each node, where only one node reports state: 
+leader and the others report state: follower. 
+Raft guarantees that there cannot be multiple leaders in the same term because a leader must receive a majority of votes.
 
 2. Perform a PUT operation for the key "a" on the leader. Check the status of the different nodes. What changes have occurred and why (if any)?
 
 Ans:
+Performing a PUT for key "a" updates the value on the leader and then replicates it to the followers.
+After replication, all nodes show the same value in their internal state.
+The commit index increases because the operation has been committed by a majority
 
 3. Perform an APPEND operation for the key "a" on the leader. Check the status of the different nodes. What changes have occurred and why (if any)?
 
-Ans: 
+Ans:
+The APPEND operation adds "mouse" to the existing list.
+Again, the leader appends the log entry and replicates it to the followers.
+After commit, all nodes return: ["cat","dog","mouse"]
+
 
 4. Perform a GET operation for the key "a" on the leader. Check the status of the different nodes. What changes have occured and why (if any)?
 
 Ans:
-
+A GET request on any node returns the same value.
+This shows that Raft has replicated the state correctly across all nodes.
 
 
 # Task 3
