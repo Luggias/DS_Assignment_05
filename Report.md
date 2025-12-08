@@ -18,11 +18,13 @@ term.
 Ans: When Raft starts, all servers begin in the Follower state, and there is no leader yet. Each follower has its own random election timeout. 
      Since no leader exists to send heartbeats, one follower’s timeout will eventually expire. That follower becomes a Candidate, 
      increases the current term, and sends RequestVote messages to all other servers. 
-     If it receives a majority of votes, it is elected the Leader for that term. Once elected, it immediately starts sending heartbeat messages to all followers to prevent new elections and to stabilize the cluster.
+     If it receives a majority of votes, it is elected the Leader for that term. Once elected, it immediately starts sending heartbeat messages 
+     to all followers to prevent new elections and to stabilize the cluster.
 
 2. Perform one request on the leader, wait until the leader is committed by all servers. Pause the simulation.
 Then perform a new request on the leader. Take a screenshot, stop the leader and then resume the simulation.
-Once, there is a new leader, perform a new request and then resume the previous leader. Once, this new request is committed by all servers, pause the simulation and take a screenshot. Explain what happened?
+Once, there is a new leader, perform a new request and then resume the previous leader. 
+Once, this new request is committed by all servers, pause the simulation and take a screenshot. Explain what happened?
 
 Ans: When the first request was committed, all nodes had the same log entry. 
      After pausing the simulation, the leader received another request, but this second entry was not committed yet. 
@@ -30,7 +32,9 @@ Ans: When the first request was committed, all nodes had the same log entry.
      The new leader accepted a new request, replicated it, and committed it. When the old leader rejoined, it discarded its uncommitted entry 
      and updated its log to match the new leader. In the end, all nodes converged to the same committed log again.
 
-3. Using the same visualization, stop the current leader and two additional servers. After a few increments, pause the simulation and take a screenshot. Then resume all servers and restart the simulation. After the leader election, pause the simulation and take a screenshot. How do you explain the behavior of the system during the above exercise?
+3. Using the same visualization, stop the current leader and two additional servers. After a few increments, pause the simulation and take a screenshot. 
+Then resume all servers and restart the simulation. After the leader election, pause the simulation and take a screenshot. 
+How do you explain the behavior of the system during the above exercise?
 
 Ans: When the leader and two additional servers were stopped, only two nodes remained active. With only two nodes running, the system could no longer reach a majority. 
     Since Raft requires a majority to elect a leader, no leader could be chosen, and the two active nodes repeatedly increased their term numbers without making progress. 
@@ -74,26 +78,53 @@ This shows that Raft has replicated the state correctly across all nodes.
 1. Shut down the server that acts as a leader. Report the status changes that you get from the servers that remain active after shutting down the leader. What is the new leader (if any)?
 
 Ans:
+> After shutting down the original leader (node2), node1 and node3 run an election. Node1 becomes leader with higher raft_term (124). There is still a leader because a majority (2/3) remains.
 
-1. Perform a PUT operation for the key "a" on the new leader. Then, restart the previous leader, and indicate the changes in status for the three servers. Indicate the result of a GET operation for the key "a" to the previous leader.
+2. Perform a PUT operation for the key "a" on the new leader. Then, restart the previous leader, and indicate the changes in status for the three servers. Indicate the result of a GET operation for the key "a" to the previous leader.
 
 Ans:
+> Ans:
+After shutting down the original leader (node2), node1 is elected as the new leader in term 124.
+When I perform a PUT operation for key "a" on node1 the Raft status shows that the log length and
+commit index increase on the majority: on node1 and node3 `log_len` changes from 2 to 3 and
+`commit_idx` from 49 to 50 which indicats that the new entry has been replicated and committed.
+When I restart the previous leader node2 it does not start a new election but comes back as a follower
+in the same term. Its `log_len` and `commit_idx` are then updated to 3 and 50 as it
+catches up by receiving AppendEntries from the current leader node1.
+A subsequent GET request for key "a" sent to the previous leader node2
+(`GET /keys/a`) returns `["v_new"]`. This confirms that the PUT performed on the new leader
+has been replicated and applied on the old leader after it rejoins the cluster.
 
 3. Has the PUT operation been replicated? Indicate which steps lead to a new election and which ones do not. Justify your answer using the statuses returned by the servers.
 
 Ans:
+> The PUT is replicated to the majority (node1 and node3). When node2 rejoins  AppendEntries from the new leader bring it up to date. 
+> Elections only happen when no node receives heartbeats from a current leader becuse restarting the old leader while a leader exists does not trigger a new election.
 
 4. Shut down two servers: first shut down a server that is not the leader, then shut down the leader. Report the status changes of the remaining server and explain what happened.
 
 Ans:
+> When I first shut down a follower (node3) the remaining two servers (node1 and node2) still represented a majority of the cluster (2 out of 3). Therefore, the leader (node1) remained stable in state = 2 and continued to have has_quorum = True.
+When I then shut down the leader (node1), only a single node remained running (node2). This node immediately lost quorum (has_quorum = False) and could not elect a new leader. 
+Its own state remained state = 0 (follower) and the observed raft_term increased over time as it repeatedly started unsuccessful election attempts
+but no valid leader could be elected because a majority (2 out of 3) was no longer available.
 
 5. Can you perform GET, PUT, or APPEND operations in this system state? Justify your answer.
 
 Ans:
+> After shutting down two servers only node2 was running. Its status shows has_quorum = False, so it cannot elect a new leader or commit new log entries.
+I issued write requests (PUT and APPEND) on key “b” against node2. The HTTP client returned without any error message, but the Raft status did not change: log_len stayed at 2 and commit_idx stayed at 50. 
+This means the writes were not replicated or committed because no majority is available. A following GET /keys/b produced an empty response body which indicates that the new key b is not visible in the state machine, 
+while a previously committed key such as “a” is still readable (e.g. GET /keys/a returns ["v_new"]).
+Therefore, with only one node up Raft can still serve reads of already committed data but cant safely perform PUT or APPEND operations. The system is effectively read-only and cannot make progress without a quorum.
 
 6. Restart the servers and note down the changes in status. Describe what happened.
 
 Ans:
+> After restarting the stopped servers the cluster immediately regained a majority and Raft triggered a new leader election. 
+Node2 became the new leader in term 125 while node1 and node3 transitioned back into the follower state. All three nodes then synchronized their logs via AppendEntries.
+The values of log_len and commit_idx became identical: (log_len = 3 and commit_idx = 51).
+Once the logs were identical, the system returned to a fully healthy state with a stable leader and quorum available. 
 
 ## Network Partition
 
