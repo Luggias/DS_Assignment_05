@@ -143,8 +143,19 @@ Ans:
 
 1. Raft uses a leader election algorithm based on randomized timeouts and majority voting, but other leader election algorithms exist. One of them is the bully algorithm, which is described in Section 5.4.1 of the Distributed Systems book by van Steen and Tanenbaum. Imagine you update the PySyncObject library to use the bully algorithm for Raft (as described in the Distributed Systems book) instead of randomized timeouts and majority voting. What would happen in the first network partition from Task 3?
 
-Ans: 
+Ans: In contrast to Raft (with a majority principle), the bully algorithm, the process with the higher ID always wins, if he’s not dead.
+In task 3 we have the following szenario: 
+Partition 1: 2 Servers, one of them the leader (note: here we don’t have a majority)
+Partition 2: 3 servers, 
+the leader is isolated on a partition of two servers, while the remaining three servers form the second partition.
+->With Raft, the isolated leader cannot maintain its leadership because it no longer has a majority and a new leader is selected. 
+-> With Bully Algorithm, the leader does not depend on the majority but on the identifier of the server (the server with the hightest ID will declare itself leader, if not dead). The server with the highest ID on the majority side would start an election, receive no responses from higher-ID servers (because they are inaccessible from the partitioning), and declare itself leader. Meanwhile, the original leader on the minority partition would remain leader because it never receives any higher-ID election messages. Both partitions will believe they have a leader, but neither partition has a consistent global view of the cluster. This violates Raft safety property that there must be at most one leader per term. 
+
 
 2. Why is it that Raft cannot handle Byzantine failure? Explain in your own words.
 
-Ans: 
+Ans: Raft requires that the system is working correctly or crashes, where nodes either behave correctly or stop functioning entirely. Raft assumes majorities are honest, not malicious. But a byzantine server can manipulate or lie. Raft has no mechanism, to recognize such incorrect information. A byzantine server could send multiple votes or logs, which could result in wrong leader or contradictory logs. 
+
+Additionally, Raft does not use cryptographic validation or redundancy mechanisms. Therefore, Raft cannot detect if one server is intentionally sending different or corrupted information. Raft simply trusts the messages it receives, assuming nodes are honest.
+If a byzantine server gets the leader, the entire system will trust him (because he’s the leader). He can insert incorrect log entries or send inconsistend AppendEntries.
+
